@@ -1,6 +1,7 @@
 # app.py
 
 import ipaddress
+import requests
 import json
 import time  # Added for sleeping
 import os    # Added for environment variables
