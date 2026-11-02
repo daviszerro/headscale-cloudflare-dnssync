@@ -23,12 +23,30 @@ def getTailscaleDevice(apikey, clientid, clientsecret, tailnet):
     data = json.loads(response.text)
     if (response.status_code == 200):
         output = []
+        # 仅同步本 Tailnet 自有设备，并以 Tailscale 管理的设备名称作为 DNS 名称来源。
+        #
+        # device['hostname'] 是客户端上报的操作系统主机名，可能包含空格、下划线，也可能是 localhost 等重复名称。
+        # 原实现同时同步 hostname 和 name，导致多台设备共用 localhost.ts.*，甚至产生无效的 DNS 记录。
+        #
+        # device['name'] 是 Tailscale 管理的设备 DNS 名称，取第一个标签作为短主机名。
+        # 跳过 isExternal 设备，避免将他人共享进来的节点发布到自己的 DNS 域；
+        # 跳过空名称，防止生成 .ts.example.com 这样的非法记录。
+        #
+        # 取舍：不再为操作系统 hostname 创建额外别名，统一以 Tailscale 设备名称为准。
+        # 设备重命名后，旧名称对应的记录将由后续 stale cleanup 清理。
         for device in data['devices']:
-            #print(device['hostname']+": "+json.dumps(device['addresses']))
+            if device.get('isExternal'):
+                continue
+
+            name = (device.get('name') or '').split('.')[0].lower()
+            if not name:
+                continue
+
             for address in device['addresses']:
-                output.append({'hostname': alterHostname(device['hostname']), 'address': address})
-                if device['name'].split('.')[0].lower() != device['hostname'].lower():
-                    output.append({'hostname': alterHostname(device['name'].split('.')[0].lower()), 'address': address})
+                output.append({
+                    'hostname': alterHostname(name),
+                    'address': address
+                })
         return output
     else:
         exit(colored("getTailscaleDevice() - {status}, {error}".format(status=str(response.status_code), error=data['message']), "red"))
